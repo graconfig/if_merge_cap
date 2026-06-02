@@ -70,7 +70,17 @@
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
         </dependency>
 
-        <!-- XSUAA -->
+        <!-- Spring Security（SecurityConfig 用） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <!-- XSUAA（在 Spring Security 之上做 JWT 校验） -->
         <dependency>
             <groupId>com.sap.cloud.security</groupId>
             <artifactId>resourceserver-security-spring-boot-starter</artifactId>
