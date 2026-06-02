@@ -31,15 +31,32 @@ public final class ResponseParser {
     /** 指定 tool 名の tool_use.input を抽出。複数あれば最初の 1 つ。 */
     @SuppressWarnings("unchecked")
     public static Map<String, Object> extractToolInput(Map<String, Object> response, String toolName) {
-        Map<String, Object> output = (Map<String, Object>) response.getOrDefault("output", Map.of());
-        Map<String, Object> message = (Map<String, Object>) output.getOrDefault("message", Map.of());
-        List<Map<String, Object>> content = (List<Map<String, Object>>) message.getOrDefault("content", List.of());
-        for (Map<String, Object> block : content) {
-            Object tu = block.get("toolUse");
-            if (tu instanceof Map<?, ?> m) {
-                if (toolName.equals(m.get("name"))) {
-                    return (Map<String, Object>) m.getOrDefault("input", Map.of());
+        Object outputObj = response.get("output");
+        if (!(outputObj instanceof Map<?, ?>)) return Map.of();
+        Map<String, Object> output = (Map<String, Object>) outputObj;
+
+        Object messageObj = output.get("message");
+        if (!(messageObj instanceof Map<?, ?>)) return Map.of();
+        Map<String, Object> message = (Map<String, Object>) messageObj;
+
+        Object contentObj = message.get("content");
+        if (!(contentObj instanceof List<?>)) return Map.of();
+        List<Object> content = (List<Object>) contentObj;
+
+        for (Object blockObj : content) {
+            if (!(blockObj instanceof Map<?, ?>)) continue;
+            Map<String, Object> block = (Map<String, Object>) blockObj;
+
+            Object tuObj = block.get("toolUse");
+            if (!(tuObj instanceof Map<?, ?>)) continue;
+            Map<String, Object> tu = (Map<String, Object>) tuObj;
+
+            if (toolName.equals(tu.get("name"))) {
+                Object inputObj = tu.get("input");
+                if (inputObj instanceof Map<?, ?>) {
+                    return (Map<String, Object>) inputObj;
                 }
+                return Map.of();
             }
         }
         return Map.of();
@@ -57,20 +74,26 @@ public final class ResponseParser {
         String ifName = stringOrEmpty(input.get("if_name"));
 
         List<AnalysisAiGateway.DataSheetMeta> dataSheets = new ArrayList<>();
-        List<Map<String, Object>> arr = (List<Map<String, Object>>) input.getOrDefault("data_sheets", List.of());
-        for (Map<String, Object> ds : arr) {
-            String sheetName = stringOrEmpty(ds.get("sheet_name"));
-            int dataStartRow = intOrDefault(ds.get("data_start_row"), 0);
-            int colTableName = intOrDefault(ds.get("col_table_name"), -1);
-            int colTableId = intOrDefault(ds.get("col_table_id"), -1);
-            int colItemId = intOrDefault(ds.get("col_item_id"), -1);
-            int colDigit = intOrDefault(ds.get("col_digit"), -1);
+        Object dsObj = input.get("data_sheets");
+        if (dsObj instanceof List<?>) {
+            List<Object> arr = (List<Object>) dsObj;
+            for (Object dsItem : arr) {
+                if (!(dsItem instanceof Map<?, ?>)) continue;
+                Map<String, Object> ds = (Map<String, Object>) dsItem;
 
-            dataSheets.add(new AnalysisAiGateway.DataSheetMeta(
-                    sheetName,
-                    dataStartRow,
-                    new AnalysisAiGateway.ColumnMapping(colTableName, colTableId, colItemId, colDigit)
-            ));
+                String sheetName = stringOrEmpty(ds.get("sheet_name"));
+                int dataStartRow = intOrDefault(ds.get("data_start_row"), 0);
+                int colTableName = intOrDefault(ds.get("col_table_name"), -1);
+                int colTableId = intOrDefault(ds.get("col_table_id"), -1);
+                int colItemId = intOrDefault(ds.get("col_item_id"), -1);
+                int colDigit = intOrDefault(ds.get("col_digit"), -1);
+
+                dataSheets.add(new AnalysisAiGateway.DataSheetMeta(
+                        sheetName,
+                        dataStartRow,
+                        new AnalysisAiGateway.ColumnMapping(colTableName, colTableId, colItemId, colDigit)
+                ));
+            }
         }
 
         return new AnalysisAiGateway.Phase1Result(docNumber, ifName, dataSheets);
@@ -85,10 +108,17 @@ public final class ResponseParser {
                                                            String fallbackDocNumber,
                                                            String fallbackIfName) {
         Map<String, Object> input = extractToolInput(response, "extract_interface_info");
-        List<Map<String, Object>> items = (List<Map<String, Object>>) input.getOrDefault("interfaces", List.of());
-        List<InterfaceRecord> records = new ArrayList<>(items.size());
+        Object itemsObj = input.get("interfaces");
+        List<InterfaceRecord> records = new ArrayList<>();
+        if (!(itemsObj instanceof List<?>)) {
+            return records;
+        }
+        List<Object> items = (List<Object>) itemsObj;
         int idx = 1;
-        for (Map<String, Object> item : items) {
+        for (Object itemObj : items) {
+            if (!(itemObj instanceof Map<?, ?>)) continue;
+            Map<String, Object> item = (Map<String, Object>) itemObj;
+
             String docNum = stringOrEmpty(item.get("document_number"));
             if (docNum.isEmpty()) docNum = fallbackDocNumber;
             String ifName = stringOrEmpty(item.get("if_name"));
