@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.handjapan.ifmerge</groupId>
+        <artifactId>ifmerge-cap</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>ifmerge-infrastructure</artifactId>
+    <packaging>jar</packaging>
+
+    <name>IFmerge CAP - Infrastructure</name>
+    <description>
+        Outermost layer. Contains:
+          - Spring Boot main class
+          - CAP service handlers (inbound adapters)
+          - SAP AI Core client, in-memory job store (outbound adapters)
+          - Config classes (async, security, OpenAPI, etc.)
+          - CDS service definitions (resources/cds/)
+    </description>
+
+    <dependencies>
+        <!-- Internal -->
+        <dependency>
+            <groupId>com.handjapan.ifmerge</groupId>
+            <artifactId>ifmerge-application</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.handjapan.ifmerge</groupId>
+            <artifactId>ifmerge-domain</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- CAP -->
+        <dependency>
+            <groupId>com.sap.cds</groupId>
+            <artifactId>cds-starter-spring-boot-odata</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.sap.cds</groupId>
+            <artifactId>cds-feature-cloudfoundry</artifactId>
+        </dependency>
+
+        <!-- Resilience4j -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+        </dependency>
+
+        <!-- OpenAPI / Swagger -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
+        <!-- XSUAA -->
+        <dependency>
+            <groupId>com.sap.cloud.security</groupId>
+            <artifactId>resourceserver-security-spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- YAML -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+        </dependency>
+
+        <!-- Logging -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- Tests -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>ifmerge-cap-srv-exec</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.handjapan.ifmerge.infrastructure.IfmergeApplication</mainClass>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

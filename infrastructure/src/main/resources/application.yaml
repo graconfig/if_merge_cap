@@ -1,0 +1,62 @@
+spring:
+  application:
+    name: ifmerge-cap
+  main:
+    banner-mode: console
+
+server:
+  port: 8080
+
+ifmerge:
+  # AI Gateway モック切替（true: MockSapAiCoreClient, false: 実 SAP AI Core）
+  ai:
+    mock: true
+  # セキュリティ：dev 既定 permitAll、本番では false にして XSUAA JWT 必須に
+  security:
+    permitAll: true
+  analysis:
+    phase1HeadRows: 30
+    maxChunkRows: 100
+    timeout: 5m
+  merge:
+    defaultThreshold: 0.80
+    defaultMode: max
+  job:
+    ttl: 15m
+    cleanupInterval: 600000   # 10 分 (ms)
+    maxConcurrent: 10
+  prompts:
+    path: classpath:prompts.yaml
+
+resilience4j:
+  retry:
+    instances:
+      sap-ai-core:
+        max-attempts: 3
+        wait-duration: 2s
+        exponential-backoff-multiplier: 2
+  circuitbreaker:
+    instances:
+      sap-ai-core:
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+logging:
+  pattern:
+    console: '%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n'
+  level:
+    com.handjapan.ifmerge: INFO
+    com.sap.cds: WARN
+    org.springframework.web: WARN
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
