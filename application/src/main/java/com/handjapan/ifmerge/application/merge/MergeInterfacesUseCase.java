@@ -70,20 +70,25 @@ public class MergeInterfacesUseCase {
             double threshold = cmd.options().threshold();
             SimilarityMode mode = cmd.options().mode();
 
-            // ────────── 1. records → IFInfo マップ ──────────
+            // ────────── 1. records → IFInfo マップ + records by IF ──────────
             Map<String, IFInfo> ifMap = aggregator.aggregate(records);
             log.info("Job {}: 集約後 {} IFs", jobId, ifMap.size());
+
+            // ifName → records の Map（prompt 構築用）
+            Map<String, List<InterfaceRecord>> recordsByIf = records.stream()
+                    .collect(Collectors.groupingBy(InterfaceRecord::ifName));
+
             jobManager.updateProgress(jobId, 10, "CLASSIFYING");
 
             // ────────── 2. AI 分類（モジュール × シナリオ） ──────────
             Map<String, ClassificationAiGateway.CategoryInfo> categories =
-                    classificationGateway.classify(new ArrayList<>(ifMap.values()));
+                    classificationGateway.classify(new ArrayList<>(ifMap.values()), recordsByIf);
             log.info("Job {}: 分類完了（{} categories）", jobId, categories.size());
             jobManager.updateProgress(jobId, 30, "GENERATING_IF_INFO");
 
             // ────────── 3. AI 概要 + 代表項目（バッチ生成） ──────────
             Map<String, NamingAiGateway.IFSummary> summaries =
-                    namingGateway.generateAllIfInfo(new ArrayList<>(ifMap.values()));
+                    namingGateway.generateAllIfInfo(new ArrayList<>(ifMap.values()), recordsByIf);
             jobManager.updateProgress(jobId, 50, "SIMILARITY");
 
             // ────────── 4. module × scenario 毎に相似度 → グループ ──────────
@@ -131,7 +136,7 @@ public class MergeInterfacesUseCase {
                     for (List<String> memberNames : rawGroups.values()) {
                         String groupingId = allocator.next(module);
                         String mergedIfName = namingGateway.generateMergedIfName(
-                                memberNames, new ArrayList<>(catIfMap.values()));
+                                memberNames, recordsByIf);
 
                         // 代表 IF の根拠（先頭 IF の視点で）
                         String reason = reasonBuilder.build(

@@ -9,6 +9,7 @@ import com.handjapan.ifmerge.domain.analysis.service.Phase2PromptBuilder;
 import com.handjapan.ifmerge.domain.merge.model.IFInfo;
 import com.handjapan.ifmerge.domain.merge.port.ClassificationAiGateway;
 import com.handjapan.ifmerge.domain.merge.port.NamingAiGateway;
+import com.handjapan.ifmerge.domain.merge.service.MergePromptBuilders;
 import com.handjapan.ifmerge.infrastructure.config.SapAiCoreProperties;
 import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
@@ -47,6 +48,7 @@ public class SapAiCoreClient implements AnalysisAiGateway, ClassificationAiGatew
     private final DeploymentResolver deploymentResolver;
     private final Phase1PromptBuilder phase1Builder;
     private final Phase2PromptBuilder phase2Builder;
+    private final MergePromptBuilders mergePromptBuilders;
     private final RestClient http;
 
     public SapAiCoreClient(SapAiCoreProperties props,
@@ -58,6 +60,7 @@ public class SapAiCoreClient implements AnalysisAiGateway, ClassificationAiGatew
         this.deploymentResolver = deploymentResolver;
         this.phase1Builder = new Phase1PromptBuilder(promptRepository);
         this.phase2Builder = new Phase2PromptBuilder(promptRepository);
+        this.mergePromptBuilders = new MergePromptBuilders(promptRepository);
         this.http = RestClient.builder().build();
     }
 
@@ -116,37 +119,134 @@ public class SapAiCoreClient implements AnalysisAiGateway, ClassificationAiGatew
     }
 
     // ============================================================
-    // ClassificationAiGateway（暂用简易实现，等 Phase1+Phase2 验证后再补全）
+    // ClassificationAiGateway
     // ============================================================
 
     @Override
-    public Map<String, CategoryInfo> classify(List<IFInfo> ifInfos) {
-        log.warn("[stub] classify 暂未真实实现，全部归入 その他_未分類");
-        Map<String, CategoryInfo> result = new LinkedHashMap<>();
-        List<String> names = ifInfos.stream().map(IFInfo::ifName).toList();
-        result.put("その他_未分類", new CategoryInfo("その他", "未分類", "暫定分類", names));
-        return result;
-    }
+    @Retry(name = "sap-ai-core")
+    public Map<String, CategoryInfo> classify(List<IFInfo> ifInfos,
+                                              Map<String, List<InterfaceRecord>> recordsByIf) {
+        log.info("Classify 開始: {} IFs", ifInfos.size());
 
-    // ============================================================
-    // NamingAiGateway（同上，暂用简易实现）
-    // ============================================================
-
-    @Override
-    public Map<String, IFSummary> generateAllIfInfo(List<IFInfo> ifInfos) {
-        log.warn("[stub] generateAllIfInfo 暂未真实实现");
-        Map<String, IFSummary> result = new HashMap<>();
-        for (IFInfo info : ifInfos) {
-            result.put(info.ifName(), new IFSummary("", info.representativeItem()));
+        if (ifInfos.isEmpty()) {
+            return new LinkedHashMap<>();
         }
-        return result;
+
+        try {
+            String prompt = mergePromptBuilders.buildClassifyPrompt(ifInfos, recordsByIf);
+            Map<String, Object> response = converse(
+                    prompt,
+                    List.of(ToolSchemas.classifyInterfaces()),
+                    props.generationTemperatureOrDefault(),
+                    props.generationMaxTokensOrDefault()
+            );
+            logUsage("classify", response);
+
+            Map<String, CategoryInfo> result = ResponseParser.toClassifyCategories(response);
+            log.info("Classify 完了: {} categories", result.size());
+
+            // フォールバック：AI が分類を返さない場合は全 IF を「その他_未分類」へ
+            if (result.isEmpty()) {
+                log.warn("Classify: AI 返却が空、フォールバック適用");
+                List<String> names = ifInfos.stream().map(IFInfo::ifName).toList();
+                result.put("その他_未分類", new CategoryInfo(
+                        "その他", "未分類", "AI 分類が空のためフォールバック", names));
+            }
+            return result;
+
+        } catch (Exception e) {
+            log.error("Classify 失敗、フォールバック適用: {}", e.getMessage());
+            Map<String, CategoryInfo> fallback = new LinkedHashMap<>();
+            List<String> names = ifInfos.stream().map(IFInfo::ifName).toList();
+            fallback.put("その他_未分類", new CategoryInfo(
+                    "その他", "未分類", "Classify 失敗フォールバック", names));
+            return fallback;
+        }
     }
 
+    // ============================================================
+    // NamingAiGateway — generateAllIfInfo
+    // ============================================================
+
     @Override
-    public String generateMergedIfName(List<String> groupMemberIfNames, List<IFInfo> ifInfos) {
-        log.warn("[stub] generateMergedIfName 暂未真实实现，使用拼接 fallback");
-        if (groupMemberIfNames.size() == 1) return groupMemberIfNames.get(0);
-        return String.join("_", groupMemberIfNames);
+    @Retry(name = "sap-ai-core")
+    public Map<String, IFSummary> generateAllIfInfo(List<IFInfo> ifInfos,
+                                                     Map<String, List<InterfaceRecord>> recordsByIf) {
+        log.info("GenerateAllIfInfo 開始: {} IFs", ifInfos.size());
+
+        if (ifInfos.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        try {
+            String prompt = mergePromptBuilders.buildGenerateAllIfInfoPrompt(ifInfos, recordsByIf);
+            Map<String, Object> response = converse(
+                    prompt,
+                    List.of(ToolSchemas.generateAllIfInfo()),
+                    props.generationTemperatureOrDefault(),
+                    props.generationMaxTokensOrDefault()
+            );
+            logUsage("generateAllIfInfo", response);
+
+            Map<String, IFSummary> summaries = ResponseParser.toIfSummaries(response);
+            log.info("GenerateAllIfInfo 完了: {} 件", summaries.size());
+
+            // 未返却の IF には fallback で representativeItem だけ埋める
+            for (IFInfo info : ifInfos) {
+                summaries.putIfAbsent(info.ifName(),
+                        new IFSummary("", info.representativeItem()));
+            }
+            return summaries;
+
+        } catch (Exception e) {
+            log.error("GenerateAllIfInfo 失敗、空フォールバック: {}", e.getMessage());
+            Map<String, IFSummary> result = new HashMap<>();
+            for (IFInfo info : ifInfos) {
+                result.put(info.ifName(), new IFSummary("", info.representativeItem()));
+            }
+            return result;
+        }
+    }
+
+    // ============================================================
+    // NamingAiGateway — generateMergedIfName
+    // ============================================================
+
+    @Override
+    @Retry(name = "sap-ai-core")
+    public String generateMergedIfName(List<String> groupMemberIfNames,
+                                        Map<String, List<InterfaceRecord>> recordsByIf) {
+        if (groupMemberIfNames == null || groupMemberIfNames.isEmpty()) {
+            return "";
+        }
+        if (groupMemberIfNames.size() == 1) {
+            return groupMemberIfNames.get(0);
+        }
+
+        log.info("GenerateMergedIfName 開始: {} members", groupMemberIfNames.size());
+
+        try {
+            String prompt = mergePromptBuilders.buildMergedNamePrompt(groupMemberIfNames, recordsByIf);
+            Map<String, Object> response = converse(
+                    prompt,
+                    List.of(ToolSchemas.generateMergedName()),
+                    props.generationTemperatureOrDefault(),
+                    props.generationMaxTokensOrDefault()
+            );
+            logUsage("generateMergedIfName", response);
+
+            String merged = ResponseParser.toMergedName(response);
+            if (merged == null || merged.isBlank()) {
+                log.warn("GenerateMergedIfName: AI 返却が空、underscore 連結にフォールバック");
+                return String.join("_", groupMemberIfNames);
+            }
+            log.info("GenerateMergedIfName 完了: {}", merged);
+            return merged;
+
+        } catch (Exception e) {
+            log.error("GenerateMergedIfName 失敗、underscore 連結フォールバック: {}", e.getMessage());
+            return String.join("_", groupMemberIfNames);
+        }
     }
 
     // ============================================================

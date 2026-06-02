@@ -2,8 +2,11 @@ package com.handjapan.ifmerge.infrastructure.adapter.outbound.ai;
 
 import com.handjapan.ifmerge.domain.analysis.model.InterfaceRecord;
 import com.handjapan.ifmerge.domain.analysis.port.AnalysisAiGateway;
+import com.handjapan.ifmerge.domain.merge.port.ClassificationAiGateway;
+import com.handjapan.ifmerge.domain.merge.port.NamingAiGateway;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -161,5 +164,83 @@ public final class ResponseParser {
             catch (NumberFormatException ignored) { return def; }
         }
         return def;
+    }
+
+    // =====================================================================
+    // Merge: classify_interfaces
+    // =====================================================================
+
+    @SuppressWarnings("unchecked")
+    public static Map<String, ClassificationAiGateway.CategoryInfo>
+            toClassifyCategories(Map<String, Object> response) {
+        Map<String, Object> input = extractToolInput(response, "classify_interfaces");
+        Map<String, ClassificationAiGateway.CategoryInfo> result = new LinkedHashMap<>();
+
+        Object catsObj = input.get("categories");
+        if (!(catsObj instanceof List<?>)) return result;
+        List<Object> cats = (List<Object>) catsObj;
+
+        for (Object catItem : cats) {
+            if (!(catItem instanceof Map<?, ?>)) continue;
+            Map<String, Object> cat = (Map<String, Object>) catItem;
+
+            String module = stringOrEmpty(cat.get("module"));
+            String scenario = stringOrEmpty(cat.get("scenario"));
+            String description = stringOrEmpty(cat.get("category_description"));
+
+            Object namesObj = cat.get("if_names");
+            List<String> ifNames = new ArrayList<>();
+            if (namesObj instanceof List<?>) {
+                for (Object n : (List<Object>) namesObj) {
+                    if (n != null) ifNames.add(String.valueOf(n));
+                }
+            }
+
+            if (module.isEmpty()) module = "その他";
+            if (scenario.isEmpty()) scenario = "未分類";
+            if (ifNames.isEmpty()) continue;
+
+            String categoryName = module + "_" + scenario;
+            result.put(categoryName, new ClassificationAiGateway.CategoryInfo(
+                    module, scenario, description, ifNames));
+        }
+        return result;
+    }
+
+    // =====================================================================
+    // Merge: generate_all_if_info
+    // =====================================================================
+
+    @SuppressWarnings("unchecked")
+    public static Map<String, NamingAiGateway.IFSummary>
+            toIfSummaries(Map<String, Object> response) {
+        Map<String, Object> input = extractToolInput(response, "generate_all_if_info");
+        Map<String, NamingAiGateway.IFSummary> result = new LinkedHashMap<>();
+
+        Object itemsObj = input.get("interfaces");
+        if (!(itemsObj instanceof List<?>)) return result;
+        List<Object> items = (List<Object>) itemsObj;
+
+        for (Object itemObj : items) {
+            if (!(itemObj instanceof Map<?, ?>)) continue;
+            Map<String, Object> item = (Map<String, Object>) itemObj;
+
+            String ifName = stringOrEmpty(item.get("if_name"));
+            if (ifName.isEmpty()) continue;
+            String summary = stringOrEmpty(item.get("summary"));
+            String rep = stringOrEmpty(item.get("representative_item"));
+
+            result.put(ifName, new NamingAiGateway.IFSummary(summary, rep));
+        }
+        return result;
+    }
+
+    // =====================================================================
+    // Merge: generate_merged_name
+    // =====================================================================
+
+    public static String toMergedName(Map<String, Object> response) {
+        Map<String, Object> input = extractToolInput(response, "generate_merged_name");
+        return stringOrEmpty(input.get("merged_name"));
     }
 }

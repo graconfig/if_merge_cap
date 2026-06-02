@@ -93,4 +93,99 @@ public final class ToolSchemas {
                 ))
         ));
     }
+
+    // ============================================================
+    // Merge: classify_interfaces  (原 Python ai_classifier.py:93-137)
+    // ============================================================
+
+    public static Map<String, Object> classifyInterfaces() {
+        return Map.of("toolSpec", Map.of(
+                "name", "classify_interfaces",
+                "description", "SAPモジュールと業務シナリオに基づいてインターフェースを分類",
+                "inputSchema", Map.of("json", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "categories", Map.of(
+                                        "type", "array",
+                                        "description", "分類結果のリスト",
+                                        "items", Map.of(
+                                                "type", "object",
+                                                "properties", Map.of(
+                                                        "module", Map.of(
+                                                                "type", "string",
+                                                                "description", "SAPモジュールコード（単一モジュールのみ。例：SD、MM、PP、WM、FI、CO、HR）"
+                                                        ),
+                                                        "scenario", Map.of(
+                                                                "type", "string",
+                                                                "description", "業務シナリオ（例：受注処理、在庫管理）"
+                                                        ),
+                                                        "category_description", Map.of(
+                                                                "type", "string",
+                                                                "description", "分類の説明"
+                                                        ),
+                                                        "if_names", Map.of(
+                                                                "type", "array",
+                                                                "items", Map.of("type", "string"),
+                                                                "description", "この分類に属する IF 名"
+                                                        )
+                                                ),
+                                                "required", List.of("module", "scenario", "category_description", "if_names")
+                                        )
+                                )
+                        ),
+                        "required", List.of("categories")
+                ))
+        ));
+    }
+
+    // ============================================================
+    // Merge: generate_all_if_info  (原 Python ai_generator.py:303-341)
+    // ============================================================
+
+    public static Map<String, Object> generateAllIfInfo() {
+        return Map.of("toolSpec", Map.of(
+                "name", "generate_all_if_info",
+                "description", "すべてのインターフェースの概要と代表項目名を生成",
+                "inputSchema", Map.of("json", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "interfaces", Map.of(
+                                        "type", "array",
+                                        "description", "すべての IF 情報リスト",
+                                        "items", Map.of(
+                                                "type", "object",
+                                                "properties", Map.of(
+                                                        "if_name", Map.of("type", "string", "description", "IF 名"),
+                                                        "summary", Map.of("type", "string", "description", "概要（日本語、30-50 文字）"),
+                                                        "representative_item", Map.of("type", "string", "description", "代表項目名（カンマ区切り）")
+                                                ),
+                                                "required", List.of("if_name", "summary", "representative_item")
+                                        )
+                                )
+                        ),
+                        "required", List.of("interfaces")
+                ))
+        ));
+    }
+
+    // ============================================================
+    // Merge: generate_merged_name  (原 Python ai_generator.py:427-446)
+    // ============================================================
+
+    public static Map<String, Object> generateMergedName() {
+        return Map.of("toolSpec", Map.of(
+                "name", "generate_merged_name",
+                "description", "マージ後のインターフェース名を生成",
+                "inputSchema", Map.of("json", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "merged_name", Map.of(
+                                        "type", "string",
+                                        "description", "マージ後のインターフェース名（日本語、20-40 文字）"
+                                )
+                        ),
+                        "required", List.of("merged_name")
+                ))
+        ));
+    }
 }

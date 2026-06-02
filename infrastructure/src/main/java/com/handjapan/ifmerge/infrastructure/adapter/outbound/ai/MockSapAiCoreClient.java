@@ -111,9 +111,9 @@ public class MockSapAiCoreClient implements AnalysisAiGateway, ClassificationAiG
     // ============================================================
 
     @Override
-    public Map<String, CategoryInfo> classify(List<IFInfo> ifInfos) {
+    public Map<String, CategoryInfo> classify(List<IFInfo> ifInfos,
+                                              Map<String, List<InterfaceRecord>> recordsByIf) {
         log.info("[MOCK] classify: {} IFs", ifInfos.size());
-        // 全 IF を単一カテゴリに割り当てる
         Map<String, CategoryInfo> result = new LinkedHashMap<>();
         List<String> names = ifInfos.stream().map(IFInfo::ifName).toList();
         result.put("その他_未分類", new CategoryInfo("その他", "未分類", "Mock 分類", names));
@@ -125,7 +125,8 @@ public class MockSapAiCoreClient implements AnalysisAiGateway, ClassificationAiG
     // ============================================================
 
     @Override
-    public Map<String, IFSummary> generateAllIfInfo(List<IFInfo> ifInfos) {
+    public Map<String, IFSummary> generateAllIfInfo(List<IFInfo> ifInfos,
+                                                     Map<String, List<InterfaceRecord>> recordsByIf) {
         log.info("[MOCK] generateAllIfInfo: {} IFs", ifInfos.size());
         Map<String, IFSummary> result = new HashMap<>();
         for (IFInfo info : ifInfos) {
@@ -136,7 +137,8 @@ public class MockSapAiCoreClient implements AnalysisAiGateway, ClassificationAiG
     }
 
     @Override
-    public String generateMergedIfName(List<String> groupMemberIfNames, List<IFInfo> ifInfos) {
+    public String generateMergedIfName(List<String> groupMemberIfNames,
+                                        Map<String, List<InterfaceRecord>> recordsByIf) {
         log.info("[MOCK] generateMergedIfName: {} members", groupMemberIfNames.size());
         if (groupMemberIfNames.size() == 1) return groupMemberIfNames.get(0);
         return String.join("_", groupMemberIfNames) + "_統合連携IF";
