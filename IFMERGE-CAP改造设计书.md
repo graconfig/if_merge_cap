@@ -1,7 +1,8 @@
-# IFmerge CAP — 设计书
+# IFMERGE-CAP 改造设计书
 
 > 版本：v1.0
 > 工程路径：`/data/HuangCX/ifmerge-cap/`
+> 编写日期：2026-06-02
 
 ---
 
@@ -9,7 +10,7 @@
 
 公司有数百份历史 EBS 接口设计书需要迁移到 SAP，存在三个痛点：
 - **规模大**：上万行字段，人工逐份阅读不现实
-- **重复多**：不同部门写的接口字段大量重叠，但人工对比效率极低
+- **重复多**：不同部门写的接口字段大量重叠，人工对比效率极低
 - **格式杂**：Sheet 命名、列布局不一，难以直接复用
 
 本工程是基于 **SAP CAP for Java** 的后端服务，负责：
@@ -64,7 +65,7 @@
 |---|---|
 | `domain` | JDK 17 + slf4j-api |
 | `application` | domain + spring-context |
-| `infrastructure` | application + Spring Boot + CAP + WebClient + 全部 |
+| `infrastructure` | application + Spring Boot + CAP + WebClient |
 | `db` | — |
 
 ### 3.3 BTP 服务绑定
@@ -127,11 +128,11 @@ ifmerge-cap/
 namespace handjapan.ifmerge;
 ```
 
-**仅声明 namespace，不定义任何实体**。整套系统业务数据不落库，全部活在 JVM 内存或请求体中。`db/` 模块保留作为将来扩展点（审计日志、Job 历史等）。
+**仅声明 namespace，不定义任何实体**。业务数据不落库，全部活在 JVM 内存或请求体中。`db/` 模块保留作为将来扩展点（审计日志、Job 历史等）。
 
 ### 5.2 内存数据模型（Java records）
 
-业务数据用 Java record 表示，分布在 `domain/` 模块：
+业务数据用 Java record 表示，分布在 `domain/` 模块。
 
 #### 解析侧（analysis）
 
@@ -180,7 +181,7 @@ service AnalysisService @(path: '/analysis', requires: 'ifmerge.api') {
 }
 ```
 
-`merge-service.cds` 类似。完整 CDS schema 见对应文件。
+`merge-service.cds` 类似。
 
 ### 6.2 REST 暴露的端点
 
@@ -217,7 +218,7 @@ service AnalysisService @(path: '/analysis', requires: 'ifmerge.api') {
 {
   "records": [
     {"no":1, "documentNumber":"BDN-EPD-OF-093", "ifName":"受注ヘッダ連携",
-     "ebsTableId":"OE_ORDER_HEADERS_ALL", "itemId":"ORDER_NUMBER", ...}
+     "ebsTableId":"OE_ORDER_HEADERS_ALL", "itemId":"ORDER_NUMBER", "...": "..."}
   ],
   "options": { "threshold": 0.80, "mode": "max" }
 }
@@ -259,7 +260,7 @@ runAsync():
    ↓
    ─── Phase 1：構造識別 ────────────────────────────
    Phase1PromptBuilder.build(fileName, sheets, headRows)
-      ├─ formatSheetHead(sheets, 30)         ← 每个 sheet 取前 30 行 → "[列号]值" 文本
+      ├─ formatSheetHead(sheets, 30)        ← 每个 sheet 取前 30 行 → "[列号]值" 文本
       └─ PromptRepository.render("phase1", vars)
    ↓
    aiGateway.analyzePhase1() → Phase1Result(docNumber, ifName, dataSheets[])
