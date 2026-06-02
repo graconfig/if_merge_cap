@@ -92,6 +92,13 @@
             <artifactId>snakeyaml</artifactId>
         </dependency>
 
+        <!-- H2 内存 DB（CAP 框架需要一个 DataSource，即使我们不用 entities） -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- Logging -->
         <dependency>
             <groupId>org.slf4j</groupId>
