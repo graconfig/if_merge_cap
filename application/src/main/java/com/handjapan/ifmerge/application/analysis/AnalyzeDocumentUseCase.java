@@ -9,7 +9,8 @@ import com.handjapan.ifmerge.domain.analysis.model.InterfaceRecord;
 import com.handjapan.ifmerge.domain.analysis.port.AnalysisAiGateway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -41,19 +42,28 @@ public class AnalyzeDocumentUseCase {
 
     private final JobManager jobManager;
     private final AnalysisAiGateway aiGateway;
+    private final TaskExecutor jobExecutor;
 
-    public AnalyzeDocumentUseCase(JobManager jobManager, AnalysisAiGateway aiGateway) {
+    public AnalyzeDocumentUseCase(JobManager jobManager,
+                                  AnalysisAiGateway aiGateway,
+                                  @Qualifier("jobExecutor") TaskExecutor jobExecutor) {
         this.jobManager = jobManager;
         this.aiGateway = aiGateway;
+        this.jobExecutor = jobExecutor;
     }
 
+    /**
+     * Job を作成し、{@link TaskExecutor} に runAsync を投げて即座に Job を返す。
+     * <p>注意：{@code @Async} 自调用は Spring 代理を通らず同期実行になるため、
+     * ここは明示的に {@code jobExecutor.execute(...)} を使う。
+     */
     public Job submit(AnalyzeDocumentCommand cmd) {
         Job job = jobManager.create(JobType.ANALYSIS);
-        runAsync(job.id(), cmd);
+        jobExecutor.execute(() -> runAsync(job.id(), cmd));
         return job;
     }
 
-    @Async("jobExecutor")
+    /** 後台で実行される処理本体（{@code @Async} 不要）。 */
     public void runAsync(UUID jobId, AnalyzeDocumentCommand cmd) {
         try {
             // ────────── Phase 1: 構造識別 ──────────

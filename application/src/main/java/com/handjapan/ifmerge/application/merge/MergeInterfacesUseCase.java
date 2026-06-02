@@ -10,7 +10,8 @@ import com.handjapan.ifmerge.domain.merge.port.NamingAiGateway;
 import com.handjapan.ifmerge.domain.merge.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -36,6 +37,7 @@ public class MergeInterfacesUseCase {
     private final JobManager jobManager;
     private final ClassificationAiGateway classificationGateway;
     private final NamingAiGateway namingGateway;
+    private final TaskExecutor jobExecutor;
 
     // domain services（純 Java、Spring 管理外）
     private final IFAggregator aggregator = new IFAggregator();
@@ -46,19 +48,20 @@ public class MergeInterfacesUseCase {
 
     public MergeInterfacesUseCase(JobManager jobManager,
                                   ClassificationAiGateway classificationGateway,
-                                  NamingAiGateway namingGateway) {
+                                  NamingAiGateway namingGateway,
+                                  @Qualifier("jobExecutor") TaskExecutor jobExecutor) {
         this.jobManager = jobManager;
         this.classificationGateway = classificationGateway;
         this.namingGateway = namingGateway;
+        this.jobExecutor = jobExecutor;
     }
 
     public Job submit(MergeInterfacesCommand cmd) {
         Job job = jobManager.create(JobType.MERGE);
-        runAsync(job.id(), cmd);
+        jobExecutor.execute(() -> runAsync(job.id(), cmd));
         return job;
     }
 
-    @Async("jobExecutor")
     public void runAsync(UUID jobId, MergeInterfacesCommand cmd) {
         try {
             jobManager.markRunning(jobId, "AGGREGATING");
