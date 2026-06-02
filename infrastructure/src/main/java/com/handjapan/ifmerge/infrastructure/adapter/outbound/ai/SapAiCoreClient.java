@@ -5,34 +5,35 @@ import com.handjapan.ifmerge.domain.analysis.model.InterfaceRecord;
 import com.handjapan.ifmerge.domain.analysis.port.AnalysisAiGateway;
 import com.handjapan.ifmerge.domain.analysis.port.PromptRepository;
 import com.handjapan.ifmerge.domain.analysis.service.Phase1PromptBuilder;
+import com.handjapan.ifmerge.domain.analysis.service.Phase2PromptBuilder;
 import com.handjapan.ifmerge.domain.merge.model.IFInfo;
 import com.handjapan.ifmerge.domain.merge.port.ClassificationAiGateway;
 import com.handjapan.ifmerge.domain.merge.port.NamingAiGateway;
+import com.handjapan.ifmerge.infrastructure.config.SapAiCoreProperties;
+import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * SAP AI Core 経由の Claude 呼び出しクライアント。
- * 3 つの Gateway ポートを同一クラスで実装する（共通の token 管理・retry 機構を持つため）。
+ * SAP AI Core 経由の Claude 呼び出しクライアント（本番実装）。
  *
- * <p>原 Python 対応：
- * <ul>
- *   <li>{@code IFmerge_1/analyzer/sap_client.py} — OAuth + Converse API</li>
- *   <li>{@code IFmerge_1/analyzer/ai_analyzer.py} — Phase1/Phase2 編排</li>
- *   <li>{@code IFmerge/ebs_merger/ai_generator.py} — Naming/Classification</li>
- * </ul>
+ * <p>有効化条件: {@code ifmerge.ai.mock=false}。
  *
- * <p>呼び出しパラメータ（原 Python と一致）：
+ * <p>原 Python 対応:
  * <ul>
- *   <li>Phase1/Phase2: {@code temperature=0.3, max_tokens=16384}</li>
- *   <li>Classification/Naming: {@code temperature=0.7, max_tokens=8192}</li>
- *   <li>Retry: {@code max_retries=3, wait=2^attempt} → 1s, 2s</li>
+ *   <li>{@code IFmerge_1/analyzer/sap_client.py}</li>
+ *   <li>{@code IFmerge_1/analyzer/ai_analyzer.py}</li>
+ *   <li>{@code IFmerge/ebs_merger/ai_generator.py}（classify/naming はまだ簡易実装）</li>
  * </ul>
  */
 @Component
@@ -41,145 +42,166 @@ public class SapAiCoreClient implements AnalysisAiGateway, ClassificationAiGatew
 
     private static final Logger log = LoggerFactory.getLogger(SapAiCoreClient.class);
 
-    /** Phase 1/Phase 2 用の LLM 推論パラメータ。原 Python ai_analyzer.py:296-297 と一致。 */
-    private static final double ANALYSIS_TEMPERATURE = 0.3;
-    private static final int ANALYSIS_MAX_TOKENS = 16384;
-
-    /** Classification/Naming 用。原 Python ai_generator.py:214 と一致。 */
-    private static final double GENERATION_TEMPERATURE = 0.7;
-    private static final int GENERATION_MAX_TOKENS = 8192;
-
+    private final SapAiCoreProperties props;
+    private final SapAiCoreTokenProvider tokenProvider;
+    private final DeploymentResolver deploymentResolver;
     private final Phase1PromptBuilder phase1Builder;
-    // TODO: Phase2PromptBuilder phase2Builder
-    // TODO: ClassificationPromptBuilder classifyBuilder
-    // TODO: NamingPromptBuilder namingBuilder
-    private final PromptRepository promptRepository;
+    private final Phase2PromptBuilder phase2Builder;
+    private final RestClient http;
 
-    public SapAiCoreClient(PromptRepository promptRepository) {
-        this.promptRepository = promptRepository;
+    public SapAiCoreClient(SapAiCoreProperties props,
+                           SapAiCoreTokenProvider tokenProvider,
+                           DeploymentResolver deploymentResolver,
+                           PromptRepository promptRepository) {
+        this.props = props;
+        this.tokenProvider = tokenProvider;
+        this.deploymentResolver = deploymentResolver;
         this.phase1Builder = new Phase1PromptBuilder(promptRepository);
+        this.phase2Builder = new Phase2PromptBuilder(promptRepository);
+        this.http = RestClient.builder().build();
     }
 
     // ============================================================
-    // AnalysisAiGateway
+    // AnalysisAiGateway — Phase 1
     // ============================================================
 
     @Override
-    public Phase1Result analyzePhase1(String fileName, List<CleanedSheet> sheets, int phase1HeadRows) {
+    @Retry(name = "sap-ai-core")
+    public Phase1Result analyzePhase1(String fileName,
+                                      List<CleanedSheet> sheets,
+                                      int phase1HeadRows) {
         log.info("Phase1 開始: fileName={}, sheets={}, headRows={}",
                 fileName, sheets.size(), phase1HeadRows);
 
-        // ① プロンプト構築（domain の Phase1PromptBuilder を使用）
         String prompt = phase1Builder.build(fileName, sheets, phase1HeadRows);
-        log.debug("Phase1 prompt length={} chars", prompt.length());
-
-        // ② Tool schema (extract_doc_meta)
-        Object toolConfig = buildExtractDocMetaTool();
-
-        // ③ Converse API 呼び出し（temperature=0.3, max_tokens=16384, retry付き）
-        // TODO: 実装
-        //  - OAuth2 client_credentials で token 取得（キャッシュ）
-        //  - POST {base_url}/inference/deployments/{id}/converse
-        //  - body: { messages, toolConfig: { tools, toolChoice: {any:{}} }, inferenceConfig }
-        //  - Resilience4j @Retry: max-attempts=3, wait-duration=1s, multiplier=2
-        //  - response から content[].toolUse を抽出
-        //  - tool_use.input を Phase1Result に変換
-        //    （ColumnMapping は nested record として組み立て）
-        log.warn("[stub] Phase1 HTTP 呼び出しは未実装");
-        throw new UnsupportedOperationException(
-                "SapAiCoreClient.analyzePhase1: HTTP call not implemented yet. " +
-                "Prompt is built correctly (length=" + prompt.length() + ")"
+        Map<String, Object> response = converse(
+                prompt,
+                List.of(ToolSchemas.extractDocMeta()),
+                props.analysisTemperatureOrDefault(),
+                props.analysisMaxTokensOrDefault()
         );
+        logUsage("phase1", response);
+
+        Phase1Result result = ResponseParser.toPhase1Result(response);
+        log.info("Phase1 完了: doc={}, if={}, dataSheets={}",
+                result.documentNumber(), result.ifName(), result.dataSheets().size());
+        return result;
     }
 
+    // ============================================================
+    // AnalysisAiGateway — Phase 2
+    // ============================================================
+
     @Override
+    @Retry(name = "sap-ai-core")
     public List<InterfaceRecord> analyzePhase2(String fileName,
                                                String docNumber,
                                                String ifName,
                                                List<List<String>> chunk,
                                                ColumnMapping columnMapping) {
-        // TODO: Phase2PromptBuilder を使ってプロンプト構築 → Converse API
-        throw new UnsupportedOperationException("Not implemented yet");
+        log.info("Phase2 開始: fileName={}, chunkRows={}", fileName, chunk.size());
+
+        String prompt = phase2Builder.build(fileName, docNumber, ifName, chunk, columnMapping);
+        Map<String, Object> response = converse(
+                prompt,
+                List.of(ToolSchemas.extractInterfaceInfo()),
+                props.analysisTemperatureOrDefault(),
+                props.analysisMaxTokensOrDefault()
+        );
+        logUsage("phase2", response);
+
+        List<InterfaceRecord> records = ResponseParser.toInterfaceRecords(response, docNumber, ifName);
+        log.info("Phase2 完了: {} records", records.size());
+        return records;
     }
 
     // ============================================================
-    // ClassificationAiGateway
+    // ClassificationAiGateway（暂用简易实现，等 Phase1+Phase2 验证后再补全）
     // ============================================================
 
     @Override
     public Map<String, CategoryInfo> classify(List<IFInfo> ifInfos) {
-        // TODO: prompts.yaml::classify_interfaces をレンダリング → Converse API
-        log.info("[stub] classify: {} IFs", ifInfos.size());
-        throw new UnsupportedOperationException("Not implemented yet");
+        log.warn("[stub] classify 暂未真实实现，全部归入 その他_未分類");
+        Map<String, CategoryInfo> result = new LinkedHashMap<>();
+        List<String> names = ifInfos.stream().map(IFInfo::ifName).toList();
+        result.put("その他_未分類", new CategoryInfo("その他", "未分類", "暫定分類", names));
+        return result;
     }
 
     // ============================================================
-    // NamingAiGateway
+    // NamingAiGateway（同上，暂用简易实现）
     // ============================================================
 
     @Override
     public Map<String, IFSummary> generateAllIfInfo(List<IFInfo> ifInfos) {
-        // TODO: prompts.yaml::generate_all_if_info をレンダリング → Converse API
-        log.info("[stub] generateAllIfInfo: {} IFs", ifInfos.size());
-        return new HashMap<>();
+        log.warn("[stub] generateAllIfInfo 暂未真实实现");
+        Map<String, IFSummary> result = new HashMap<>();
+        for (IFInfo info : ifInfos) {
+            result.put(info.ifName(), new IFSummary("", info.representativeItem()));
+        }
+        return result;
     }
 
     @Override
     public String generateMergedIfName(List<String> groupMemberIfNames, List<IFInfo> ifInfos) {
-        // TODO: prompts.yaml::generate_merged_if_name をレンダリング → Converse API
-        log.info("[stub] generateMergedIfName: {} members", groupMemberIfNames.size());
+        log.warn("[stub] generateMergedIfName 暂未真实实现，使用拼接 fallback");
+        if (groupMemberIfNames.size() == 1) return groupMemberIfNames.get(0);
         return String.join("_", groupMemberIfNames);
     }
 
     // ============================================================
-    // Tool schemas（Converse API 仕様）
+    // Converse API 调用核心
     // ============================================================
 
-    /**
-     * Phase 1 の extract_doc_meta Tool schema を構築する。
-     * 原 Python {@code IFmerge_1/analyzer/ai_analyzer.py:77-137} と等価。
-     *
-     * <p>必須フィールド：
-     * <ul>
-     *   <li>document_number, if_name, data_sheets（トップレベル）</li>
-     *   <li>sheet_name, data_start_row, col_table_id, col_item_id（data_sheets 各要素）</li>
-     *   <li>col_table_name, col_digit は不要（不明時 -1）</li>
-     * </ul>
-     */
-    private Object buildExtractDocMetaTool() {
-        // TODO: 実際の Tool schema オブジェクトを構築（SAP AI SDK の型 or Map）
-        //  返却例：
-        //  {
-        //    "toolSpec": {
-        //      "name": "extract_doc_meta",
-        //      "description": "設計書の固定情報・データシート・列構造を識別する",
-        //      "inputSchema": {
-        //        "json": {
-        //          "type": "object",
-        //          "properties": {
-        //            "document_number": { "type": "string" },
-        //            "if_name":         { "type": "string" },
-        //            "data_sheets": {
-        //              "type": "array",
-        //              "items": {
-        //                "type": "object",
-        //                "properties": {
-        //                  "sheet_name":      { "type": "string" },
-        //                  "data_start_row":  { "type": "integer" },
-        //                  "col_table_name":  { "type": "integer" },
-        //                  "col_table_id":    { "type": "integer" },
-        //                  "col_item_id":     { "type": "integer" },
-        //                  "col_digit":       { "type": "integer" }
-        //                },
-        //                "required": ["sheet_name", "data_start_row", "col_table_id", "col_item_id"]
-        //              }
-        //            }
-        //          },
-        //          "required": ["document_number", "if_name", "data_sheets"]
-        //        }
-        //      }
-        //    }
-        //  }
-        return null;
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> converse(String prompt,
+                                          List<Map<String, Object>> tools,
+                                          double temperature,
+                                          int maxTokens) {
+        String deploymentId = deploymentResolver.resolve();
+        String url = props.baseUrl().replaceAll("/+$", "")
+                + "/inference/deployments/" + deploymentId + "/converse";
+        String token = tokenProvider.getToken();
+
+        Map<String, Object> body = Map.of(
+                "messages", List.of(Map.of(
+                        "role", "user",
+                        "content", List.of(Map.of("type", "text", "text", prompt))
+                )),
+                "toolConfig", Map.of(
+                        "tools", tools,
+                        "toolChoice", Map.of("any", Map.of())
+                ),
+                "inferenceConfig", Map.of(
+                        "maxTokens", maxTokens,
+                        "temperature", temperature
+                )
+        );
+
+        try {
+            Map<String, Object> response = http.post()
+                    .uri(url)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                    .header("AI-Resource-Group", props.resourceGroupOrDefault())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+            if (response == null) {
+                throw new IllegalStateException("Converse API 返回空响应");
+            }
+            return response;
+        } catch (Exception e) {
+            log.error("Converse API 调用失败: url={}", url, e);
+            throw new RuntimeException("SAP AI Core Converse API 失敗: " + e.getMessage(), e);
+        }
+    }
+
+    private void logUsage(String phase, Map<String, Object> response) {
+        Object usage = response.get("usage");
+        if (usage instanceof Map<?, ?> m) {
+            log.info("[TOKEN] phase={} in={} out={}",
+                    phase, m.get("inputTokens"), m.get("outputTokens"));
+        }
     }
 }

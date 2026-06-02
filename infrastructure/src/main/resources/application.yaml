@@ -10,7 +10,20 @@ server:
 ifmerge:
   # AI Gateway モック切替（true: MockSapAiCoreClient, false: 実 SAP AI Core）
   ai:
-    mock: true
+    mock: false
+    auth-url: https://genai-europe-aws-16rxv3mh.authentication.eu10.hana.ondemand.com
+    client-id: sb-4ba914fb-04d8-406b-ac7c-42a33bcc8f89!b549118|aicore!b540
+    client-secret: 30c733f4-1d27-4891-9633-c3125e0296a6$59d5zVVBHoXVGk_T-A5CAhelitpx5XkOYImEmubfp0w=
+    base-url: https://api.ai.prod.eu-central-1.aws.ml.hana.ondemand.com/v2
+    resource-group: default
+    # model-name と deployment-id 二选一：model-name 优先（动的解析）
+    model-name: claude-4.6-sonnet
+    deployment-id: ""
+    # LLM 调用参数（与原 Python 一致）
+    analysis-temperature: 0.3
+    analysis-max-tokens: 16384
+    generation-temperature: 0.7
+    generation-max-tokens: 8192
   # セキュリティ：dev 既定 permitAll、本番では false にして XSUAA JWT 必須に
   security:
     permitAll: true

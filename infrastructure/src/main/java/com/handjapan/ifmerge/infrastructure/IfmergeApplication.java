@@ -1,7 +1,9 @@
 package com.handjapan.ifmerge.infrastructure;
 
+import com.handjapan.ifmerge.infrastructure.config.SapAiCoreProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.ComponentScan;
 
 /**
@@ -15,6 +17,7 @@ import org.springframework.context.annotation.ComponentScan;
         "com.handjapan.ifmerge.application",
         "com.handjapan.ifmerge.domain"
 })
+@EnableConfigurationProperties({SapAiCoreProperties.class})
 public class IfmergeApplication {
 
     public static void main(String[] args) {
