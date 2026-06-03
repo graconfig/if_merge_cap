@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Stream;
 
 /**
  * Phase 2 のプロンプトを構築するビルダー。
@@ -45,8 +46,9 @@ public class Phase2PromptBuilder {
      * @param fileName       設計書ファイル名
      * @param docNumber      Phase1 で取得した文書番号
      * @param ifName         Phase1 で取得した IF 名
-     * @param chunk          データ行のチャンク（既に列フィルタ適用後でもよい）
-     * @param columnMapping  列マッピング（プロンプト変数として LLM に文脈提供）
+     * @param chunk          データ行のチャンク（全列を含む生の行でよい）
+     * @param columnMapping  列マッピング。chunk_text はこのマッピングで指定された
+     *                       列のみに絞り込まれ、トークンを節約する。
      * @return プロンプト文字列
      */
     public String build(String fileName,
@@ -59,7 +61,10 @@ public class Phase2PromptBuilder {
         Objects.requireNonNull(ifName);
         Objects.requireNonNull(chunk);
 
-        String chunkText = formatChunk(chunk);
+        // 関連列だけに絞り込んで chunk_text を構築する（元の列番号は保持）。
+        // 列が一つも特定できない場合は全列をそのまま出力する。
+        List<Integer> colOffset = resolveColumnIndices(columnMapping);
+        String chunkText = formatChunk(chunk, colOffset);
 
         Map<String, Object> vars = Map.of(
                 VAR_FILE_NAME, fileName,
@@ -98,5 +103,57 @@ public class Phase2PromptBuilder {
             }
         }
         return String.join("\n", lines);
+    }
+
+    /**
+     * 指定列だけを残して {@code [元の列番号]値} 形式のテキストを作る。
+     *
+     * <p>原 Python {@code _filter_columns}（ai_analyzer.py:333-345）と
+     * {@code _format_data_rows}（同:348-363、{@code col_offset} 経路）を統合したもの。
+     * 各行を {@code colOffset} の列だけに絞り込むことで、LLM に送るトークンを削減しつつ、
+     * タグには元の列番号を保持して Phase2 プロンプトの列文脈と整合させる。
+     *
+     * @param chunk     データ行のチャンク（全列を含む生の行）
+     * @param colOffset 残す列のインデックス（昇順・一意を想定）。
+     *                  {@code null} または空なら全列を {@link #formatChunk(List)} で出力する。
+     */
+    public static String formatChunk(List<List<String>> chunk, List<Integer> colOffset) {
+        if (colOffset == null || colOffset.isEmpty()) {
+            return formatChunk(chunk);
+        }
+        List<String> lines = new ArrayList<>();
+        for (List<String> row : chunk) {
+            List<String> tagged = new ArrayList<>();
+            for (int origCol : colOffset) {
+                String c = (origCol >= 0 && origCol < row.size()) ? row.get(origCol) : null;
+                if (c != null && !c.isEmpty()) {
+                    tagged.add("[" + origCol + "]" + c);
+                }
+            }
+            if (!tagged.isEmpty()) {
+                lines.add(String.join("  ", tagged));
+            }
+        }
+        return String.join("\n", lines);
+    }
+
+    /**
+     * 列マッピングから「送信対象の列インデックス」を導出する。
+     *
+     * <p>原 Python {@code ai_analyzer.py:446-447} と等価：
+     * {@code col_table_name / col_table_id / col_item_id / col_digit} のうち
+     * {@code >= 0} のものを集め、重複排除して昇順ソートする。
+     *
+     * @return ソート済み・一意・非負の列インデックス（該当なしなら空リスト）
+     */
+    public static List<Integer> resolveColumnIndices(AnalysisAiGateway.ColumnMapping cm) {
+        if (cm == null) {
+            return List.of();
+        }
+        return Stream.of(cm.colTableName(), cm.colTableId(), cm.colItemId(), cm.colDigit())
+                .filter(c -> c >= 0)
+                .distinct()
+                .sorted()
+                .toList();
     }
 }
