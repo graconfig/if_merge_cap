@@ -11,10 +11,10 @@ import com.handjapan.ifmerge.domain.merge.port.ClassificationAiGateway;
 import com.handjapan.ifmerge.domain.merge.port.NamingAiGateway;
 import com.handjapan.ifmerge.domain.merge.service.MergePromptBuilders;
 import com.handjapan.ifmerge.infrastructure.config.SapAiCoreProperties;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -26,9 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * SAP AI Core 経由の Claude 呼び出しクライアント（本番実装）。
- *
- * <p>有効化条件: {@code ifmerge.ai.mock=false}。
+ * SAP AI Core 経由の Claude 呼び出しクライアント（唯一の AI Gateway 実装）。
  *
  * <p>原 Python 対応:
  * <ul>
@@ -38,7 +36,6 @@ import java.util.Map;
  * </ul>
  */
 @Component
-@ConditionalOnProperty(name = "ifmerge.ai.mock", havingValue = "false")
 public class SapAiCoreClient implements AnalysisAiGateway, ClassificationAiGateway, NamingAiGateway {
 
     private static final Logger log = LoggerFactory.getLogger(SapAiCoreClient.class);
@@ -70,6 +67,7 @@ public class SapAiCoreClient implements AnalysisAiGateway, ClassificationAiGatew
 
     @Override
     @Retry(name = "sap-ai-core")
+    @CircuitBreaker(name = "sap-ai-core")
     public Phase1Result analyzePhase1(String fileName,
                                       List<CleanedSheet> sheets,
                                       int phase1HeadRows) {
@@ -97,6 +95,7 @@ public class SapAiCoreClient implements AnalysisAiGateway, ClassificationAiGatew
 
     @Override
     @Retry(name = "sap-ai-core")
+    @CircuitBreaker(name = "sap-ai-core")
     public List<InterfaceRecord> analyzePhase2(String fileName,
                                                String docNumber,
                                                String ifName,
@@ -124,6 +123,7 @@ public class SapAiCoreClient implements AnalysisAiGateway, ClassificationAiGatew
 
     @Override
     @Retry(name = "sap-ai-core")
+    @CircuitBreaker(name = "sap-ai-core")
     public Map<String, CategoryInfo> classify(List<IFInfo> ifInfos,
                                               Map<String, List<InterfaceRecord>> recordsByIf) {
         log.info("Classify 開始: {} IFs", ifInfos.size());
@@ -170,6 +170,7 @@ public class SapAiCoreClient implements AnalysisAiGateway, ClassificationAiGatew
 
     @Override
     @Retry(name = "sap-ai-core")
+    @CircuitBreaker(name = "sap-ai-core")
     public Map<String, IFSummary> generateAllIfInfo(List<IFInfo> ifInfos,
                                                      Map<String, List<InterfaceRecord>> recordsByIf) {
         log.info("GenerateAllIfInfo 開始: {} IFs", ifInfos.size());
@@ -214,6 +215,7 @@ public class SapAiCoreClient implements AnalysisAiGateway, ClassificationAiGatew
 
     @Override
     @Retry(name = "sap-ai-core")
+    @CircuitBreaker(name = "sap-ai-core")
     public String generateMergedIfName(List<String> groupMemberIfNames,
                                         Map<String, List<InterfaceRecord>> recordsByIf) {
         if (groupMemberIfNames == null || groupMemberIfNames.isEmpty()) {

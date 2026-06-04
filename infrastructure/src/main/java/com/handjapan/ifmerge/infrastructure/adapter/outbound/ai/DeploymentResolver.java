@@ -3,7 +3,6 @@ package com.handjapan.ifmerge.infrastructure.adapter.outbound.ai;
 import com.handjapan.ifmerge.infrastructure.config.SapAiCoreProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -22,7 +21,6 @@ import java.util.Map;
  * </ol>
  */
 @Component
-@ConditionalOnProperty(name = "ifmerge.ai.mock", havingValue = "false")
 public class DeploymentResolver {
 
     private static final Logger log = LoggerFactory.getLogger(DeploymentResolver.class);
@@ -43,28 +41,24 @@ public class DeploymentResolver {
         if (cachedDeploymentId != null && !cachedDeploymentId.isBlank()) {
             return cachedDeploymentId;
         }
-
         // ① 固定 deployment-id 优先
         if (props.hasFixedDeployment()) {
             cachedDeploymentId = props.deploymentId();
             log.info("使用配置的 deployment-id: {}", cachedDeploymentId);
             return cachedDeploymentId;
         }
-
         // ② 按 model-name 动态解析
         if (props.hasModelName()) {
             cachedDeploymentId = resolveByModelName();
             return cachedDeploymentId;
         }
-
         throw new IllegalStateException(
                 "未配置 ifmerge.ai.deployment-id 也未配置 ifmerge.ai.model-name");
     }
 
     @SuppressWarnings("unchecked")
     private String resolveByModelName() {
-        String url = props.baseUrl().replaceAll("/+$", "")
-                + "/lm/deployments?status=RUNNING";
+        String url = props.baseUrl().replaceAll("/+$", "") + "/lm/deployments?status=RUNNING";
         String token = tokenProvider.getToken();
 
         Map<?, ?> body;
@@ -76,8 +70,7 @@ public class DeploymentResolver {
                     .retrieve()
                     .body(Map.class);
         } catch (Exception e) {
-            throw new IllegalStateException(
-                    "Deployment 一覧の取得に失敗: " + e.getMessage(), e);
+            throw new IllegalStateException("Deployment 一覧の取得に失敗: " + e.getMessage(), e);
         }
         if (body == null) {
             throw new IllegalStateException("Deployment 一覧が空");

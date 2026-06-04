@@ -3,7 +3,6 @@ package com.handjapan.ifmerge.infrastructure.adapter.outbound.ai;
 import com.handjapan.ifmerge.infrastructure.config.SapAiCoreProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -23,7 +22,6 @@ import java.util.Map;
  * {@code ai_generator.py:_get_access_token}。
  */
 @Component
-@ConditionalOnProperty(name = "ifmerge.ai.mock", havingValue = "false")
 public class SapAiCoreTokenProvider {
 
     private static final Logger log = LoggerFactory.getLogger(SapAiCoreTokenProvider.class);

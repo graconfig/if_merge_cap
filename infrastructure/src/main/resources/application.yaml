@@ -8,12 +8,11 @@ server:
   port: 8080
 
 ifmerge:
-  # AI Gateway モック切替（true: MockSapAiCoreClient, false: 実 SAP AI Core）
+  # AI Gateway は SAP AI Core（実）のみ。env 方式：凭证明文 + 環境変数で上書き可。
   ai:
-    mock: false
     auth-url: https://genai-europe-aws-16rxv3mh.authentication.eu10.hana.ondemand.com
-    client-id: sb-4ba914fb-04d8-406b-ac7c-42a33bcc8f89!b549118|aicore!b540
-    client-secret: 30c733f4-1d27-4891-9633-c3125e0296a6$59d5zVVBHoXVGk_T-A5CAhelitpx5XkOYImEmubfp0w=
+    client-id: 'sb-4ba914fb-04d8-406b-ac7c-42a33bcc8f89!b549118|aicore!b540'
+    client-secret: '30c733f4-1d27-4891-9633-c3125e0296a6$59d5zVVBHoXVGk_T-A5CAhelitpx5XkOYImEmubfp0w='
     base-url: https://api.ai.prod.eu-central-1.aws.ml.hana.ondemand.com/v2
     resource-group: default
     # model-name と deployment-id 二选一：model-name 优先（动的解析）
@@ -24,9 +23,9 @@ ifmerge:
     analysis-max-tokens: 16384
     generation-temperature: 0.7
     generation-max-tokens: 8192
-  # セキュリティ：dev 既定 permitAll、本番では false にして XSUAA JWT 必須に
+  # セキュリティ：dev 既定 permitAll、本番（prod profile）では false で XSUAA JWT 必須
   security:
-    permitAll: true
+    permitAll: ${IFMERGE_SECURITY_PERMITALL:true}
   analysis:
     phase1HeadRows: 30
     maxChunkRows: 100
@@ -38,6 +37,8 @@ ifmerge:
     ttl: 15m
     cleanupInterval: 600000   # 10 分 (ms)
     maxConcurrent: 10
+    # RUNNING/PENDING のまま放置された Job を強制 FAILED にする閾値（メモリリーク防止）
+    runningTimeout: 10m
   prompts:
     path: classpath:prompts.yaml
 
@@ -48,6 +49,9 @@ resilience4j:
         max-attempts: 3
         wait-duration: 2s
         exponential-backoff-multiplier: 2
+        # サーキットブレーカが OPEN の時は即失敗させ、無駄なリトライをしない
+        ignore-exceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
   circuitbreaker:
     instances:
       sap-ai-core:

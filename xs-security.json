@@ -1,0 +1,30 @@
+{
+  "xsappname": "ifmerge-cap",
+  "tenant-mode": "dedicated",
+  "description": "Security descriptor for IFmerge CAP backend (analyze + merge)",
+  "scopes": [
+    {
+      "name": "$XSAPPNAME.Api",
+      "description": "IFmerge の解析/合并 API を呼び出す権限"
+    }
+  ],
+  "role-templates": [
+    {
+      "name": "IFmergeApiUser",
+      "description": "IFmerge API 利用者",
+      "scope-references": [
+        "$XSAPPNAME.Api"
+      ]
+    }
+  ],
+  "oauth2-configuration": {
+    "grant-types": [
+      "client_credentials",
+      "authorization_code"
+    ],
+    "token-validity": 3600,
+    "redirect-uris": [
+      "https://*.cfapps.*.hana.ondemand.com/**"
+    ]
+  }
+}

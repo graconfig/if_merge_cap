@@ -1,0 +1,18 @@
+# ───────────────────────────────────────────────────────────────
+# ローカルで実 SAP AI Core を叩く場合の雛形（local プロファイル）。
+# 本ファイルを application-local.yaml にコピー（.gitignore 済）し、実際の凭证を記入。
+#
+# 起動：
+#   mvn -pl infrastructure -am spring-boot:run -Dspring-boot.run.profiles=local
+# ───────────────────────────────────────────────────────────────
+ifmerge:
+  ai:
+    auth-url: https://<subaccount>.authentication.<region>.hana.ondemand.com
+    client-id: 'sb-xxxxxxxx!bxxxxx|aicore!bxxx'
+    client-secret: 'REPLACE_WITH_REAL_SECRET'
+    base-url: https://api.ai.<region>.aws.ml.hana.ondemand.com/v2
+    resource-group: default
+    model-name: claude-4.6-sonnet
+    deployment-id: ""
+  security:
+    permitAll: true
