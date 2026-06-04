@@ -27,4 +27,13 @@ public interface JobStore {
      * @return evict 件数
      */
     int evictExpired(Duration ttl);
+
+    /**
+     * runningTimeout を超えてなお PENDING / RUNNING のままの Job を
+     * 強制的に FAILED（code=JOB_TIMEOUT）にする。完了時刻が入るため、
+     * 以降は {@link #evictExpired(Duration)} の対象になる（メモリリーク防止）。
+     *
+     * @return FAILED に変更した件数
+     */
+    int failStaleJobs(Duration runningTimeout);
 }

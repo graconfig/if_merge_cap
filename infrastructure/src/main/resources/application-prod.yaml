@@ -1,0 +1,12 @@
+# ───────────────────────────────────────────────────────────────
+# 本番プロファイル（SPRING_PROFILES_ACTIVE=prod）
+# BTP CF デプロイ時に mta.yaml / manifest.yml で有効化する。
+# AI Core 凭证は mta.yaml の環境変数で明文注入（env 方式）。
+# ───────────────────────────────────────────────────────────────
+ifmerge:
+  security:
+    permitAll: false       # 本番は XSUAA JWT 必須
+
+logging:
+  level:
+    com.handjapan.ifmerge: INFO

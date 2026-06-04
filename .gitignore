@@ -47,3 +47,8 @@ logs/
 application-local.yaml
 application-local.yml
 .cdsrc.local.json
+
+# 機密を含む MTA 拡張ディスクリプタ（実体はコミットしない。雛形 *.example はOK）
+ifmerge-secrets.mtaext
+*.mtaext
+!*.mtaext.example

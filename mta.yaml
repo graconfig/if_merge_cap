@@ -1,0 +1,55 @@
+_schema-version: "3.3.0"
+ID: ifmerge-cap
+version: 1.0.0
+description: IFmerge CAP backend (analyze + merge) for SAP BTP Cloud Foundry
+
+# ───────────────────────────────────────────────────────────────
+# env 方式：AI Core 凭证を環境変数として明文注入する（技術経理の方針）。
+# ※ 機密がリポジトリ/MTA に明文で含まれる点に留意（運用で管理すること）。
+# ───────────────────────────────────────────────────────────────
+parameters:
+  enable-parallel-deployments: true
+  ai-auth-url: "https://genai-europe-aws-16rxv3mh.authentication.eu10.hana.ondemand.com"
+  ai-base-url: "https://api.ai.prod.eu-central-1.aws.ml.hana.ondemand.com/v2"
+  ai-resource-group: "default"
+  ai-model-name: "claude-4.6-sonnet"
+  ai-client-id: "sb-4ba914fb-04d8-406b-ac7c-42a33bcc8f89!b549118|aicore!b540"
+  ai-client-secret: "30c733f4-1d27-4891-9633-c3125e0296a6$59d5zVVBHoXVGk_T-A5CAhelitpx5XkOYImEmubfp0w="
+
+modules:
+  - name: ifmerge-srv
+    type: java
+    path: .
+    parameters:
+      buildpack: java_buildpack          # 代替: sap_java_buildpack
+      memory: 1024M
+      disk-quota: 1024M
+      health-check-type: http
+      health-check-http-endpoint: /actuator/health
+    properties:
+      # JDK 17 を強制（community java_buildpack）
+      JBP_CONFIG_OPEN_JDK_JRE: "{ jre: { version: 17.+ } }"
+      # prod プロファイル有効化（permitAll=false は application-prod.yaml が担当）
+      SPRING_PROFILES_ACTIVE: prod
+      # フラットな独立環境変数（凭证明文）
+      IFMERGE_AI_AUTH_URL: "${ai-auth-url}"
+      IFMERGE_AI_BASE_URL: "${ai-base-url}"
+      IFMERGE_AI_RESOURCE_GROUP: "${ai-resource-group}"
+      IFMERGE_AI_MODEL_NAME: "${ai-model-name}"
+      IFMERGE_AI_CLIENT_ID: "${ai-client-id}"
+      IFMERGE_AI_CLIENT_SECRET: "${ai-client-secret}"
+    build-parameters:
+      builder: custom
+      commands:
+        - mvn -B -q clean package -DskipTests
+      build-result: infrastructure/target/ifmerge-cap-srv-exec.jar
+    requires:
+      - name: ifmerge-xsuaa
+
+resources:
+  - name: ifmerge-xsuaa
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json

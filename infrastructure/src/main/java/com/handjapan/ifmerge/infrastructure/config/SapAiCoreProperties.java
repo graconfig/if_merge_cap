@@ -5,12 +5,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * SAP AI Core 接続 + LLM 推论参数。
  *
- * <p>从 application.yaml 的 {@code ifmerge.ai.*} 加载。
- * <p>本地通过 yaml 配置；BTP 部署时改为环境变量或 Destination Service 注入。
+ * <p>从 application.yaml 的 {@code ifmerge.ai.*} 加载（env 方式）。
  */
 @ConfigurationProperties(prefix = "ifmerge.ai")
 public record SapAiCoreProperties(
-        boolean mock,
         String authUrl,
         String clientId,
         String clientSecret,
