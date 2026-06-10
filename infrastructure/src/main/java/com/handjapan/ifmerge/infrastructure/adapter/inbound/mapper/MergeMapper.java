@@ -93,12 +93,16 @@ public class MergeMapper {
     }
 
     private MergeResultDto.MergeGroupDto toGroupDto(MergeGroup g) {
-        // 当前 domain MergeGroup の memberIfNames は List<String> なので、
-        // メンバー詳細（itemCount、ifSummary 等）は UseCase 側で別途構築する必要がある。
-        // 暫定的に空の members リストを返す。完整実装は UseCase で MergeGroup を拡張して情報を持たせる。
-        List<MergeResultDto.GroupMemberDto> members = g.memberIfNames().stream()
-                .map(name -> new MergeResultDto.GroupMemberDto(
-                        name, "", 0, "", List.of(), g.groupingReason()
+        // メンバー詳細（文書管理番号・項目数・IF概要・代表項目名・根拠）は
+        // UseCase で MergeMember として構築済み。そのまま DTO へ写像する。
+        List<MergeResultDto.GroupMemberDto> members = g.members().stream()
+                .map(m -> new MergeResultDto.GroupMemberDto(
+                        m.ifName(),
+                        m.docNumber(),
+                        m.itemCount(),
+                        m.ifSummary(),
+                        m.representativeItems(),
+                        m.groupingReason()
                 ))
                 .collect(Collectors.toList());
 

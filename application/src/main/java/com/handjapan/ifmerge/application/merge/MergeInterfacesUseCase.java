@@ -133,14 +133,40 @@ public class MergeInterfacesUseCase {
                             grouper.groupSimilarIFs(catIfMap.keySet(), pairsForGrouping);
 
                     // グループ毎に MergeGroup 構築
-                    for (List<String> memberNames : rawGroups.values()) {
+                    for (List<String> rawMemberNames : rawGroups.values()) {
                         String groupingId = allocator.next(module);
                         String mergedIfName = namingGateway.generateMergedIfName(
-                                memberNames, recordsByIf);
+                                rawMemberNames, recordsByIf);
 
-                        // 代表 IF の根拠（先頭 IF の視点で）
-                        String reason = reasonBuilder.build(
-                                memberNames.get(0), memberNames, pairsForGrouping);
+                        // メンバーは IF 名でソート（原 result_generator.py:104 の
+                        // sorted(if_dict.keys()) と整合、出力を安定化）
+                        List<String> memberNames = new ArrayList<>(rawMemberNames);
+                        Collections.sort(memberNames);
+
+                        // メンバー毎の詳細（文書管理番号・項目数・IF概要・代表項目名・根拠）を構築。
+                        // 原 result_generator.py:104-150 の OutputRow 構築に対応。
+                        List<MergeMember> members = new ArrayList<>();
+                        for (String name : memberNames) {
+                            IFInfo info = catIfMap.get(name);
+                            NamingAiGateway.IFSummary sum = summaries.get(name);
+
+                            String ifSummary = sum != null && sum.summary() != null ? sum.summary() : "";
+                            // 代表項目名：AI 結果（無ければ gateway 側で IFInfo フォールバック済み）
+                            String repItem = sum != null ? sum.representativeItem()
+                                    : (info != null ? info.representativeItem() : "");
+
+                            // メンバー単位の根拠（原 result_generator.py:127-131：if_name 視点）
+                            String reason = reasonBuilder.build(name, memberNames, pairsForGrouping);
+
+                            members.add(new MergeMember(
+                                    name,
+                                    info != null ? info.docNumber() : "",
+                                    info != null ? info.itemCount() : 0,
+                                    ifSummary,
+                                    splitRepresentativeItems(repItem),
+                                    reason
+                            ));
+                        }
 
                         // 字段去重（メンバー全 IF の records から）
                         List<InterfaceRecord> memberRecords = records.stream()
@@ -152,9 +178,8 @@ public class MergeInterfacesUseCase {
                                 groupingId,
                                 module,
                                 cat.scenario(),
-                                memberNames,
+                                members,
                                 mergedIfName,
-                                reason,
                                 mergedFields
                         ));
                     }
@@ -196,6 +221,25 @@ public class MergeInterfacesUseCase {
             log.error("Job {}: Merge 失敗", jobId, e);
             jobManager.markFailed(jobId, "MERGE_FAILED", e.getMessage());
         }
+    }
+
+    /**
+     * 代表項目名（AI はカンマ区切りの 1 文字列で返す）を個別項目のリストに分解する。
+     * 原 Python は文字列をそのままセルに書いていたが、本実装は List で保持し
+     * GUI 側（grouping_writer.py）が ", " で再結合するため、表示は等価。
+     */
+    private static List<String> splitRepresentativeItems(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        List<String> items = new ArrayList<>();
+        for (String part : raw.split("[,、，]")) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                items.add(trimmed);
+            }
+        }
+        return items;
     }
 
     /**
