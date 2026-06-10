@@ -108,9 +108,9 @@ public class MergeMapper {
 
         List<MergeResultDto.MergedFieldDto> fields = new ArrayList<>();
         int no = 1;
-        for (var pair : g.mergedFields()) {
+        for (var f : g.mergedFields()) {
             fields.add(new MergeResultDto.MergedFieldDto(
-                    no++, pair.tableId(), "", pair.itemId(), ""
+                    no++, f.tableId(), f.tableName(), f.itemId(), f.itemName()
             ));
         }
 

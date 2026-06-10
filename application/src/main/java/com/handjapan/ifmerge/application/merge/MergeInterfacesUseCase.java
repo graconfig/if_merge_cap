@@ -168,11 +168,14 @@ public class MergeInterfacesUseCase {
                             ));
                         }
 
-                        // 字段去重（メンバー全 IF の records から）
-                        List<InterfaceRecord> memberRecords = records.stream()
-                                .filter(r -> memberNames.contains(r.ifName()))
-                                .toList();
-                        Set<FieldPair> mergedFields = deduplicator.dedupe(memberRecords);
+                        // 字段去重（ソート済みメンバー順に records を連結 → 初出保持で重複排除。
+                        // 原 template_filler.py:131-148 の concat→drop_duplicates と整合）
+                        List<InterfaceRecord> memberRecords = new ArrayList<>();
+                        for (String name : memberNames) {
+                            List<InterfaceRecord> rs = recordsByIf.get(name);
+                            if (rs != null) memberRecords.addAll(rs);
+                        }
+                        List<MergedField> mergedFields = deduplicator.dedupe(memberRecords);
 
                         allGroups.add(new MergeGroup(
                                 groupingId,

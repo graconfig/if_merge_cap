@@ -1,7 +1,6 @@
 package com.handjapan.ifmerge.domain.merge.model;
 
 import java.util.List;
-import java.util.Set;
 
 /**
  * 合并組（Union-Find の結果）。
@@ -16,7 +15,7 @@ public record MergeGroup(
         String scenario,
         List<MergeMember> members,
         String mergedIfName,
-        Set<FieldPair> mergedFields
+        List<MergedField> mergedFields
 ) {
 
     public boolean isMergeRequired() {
