@@ -26,5 +26,7 @@
     "redirect-uris": [
       "https://*.cfapps.*.hana.ondemand.com/**"
     ]
-  }
+  },
+  "attributes": [],
+  "authorities-inheritance": false
 }

@@ -17,7 +17,7 @@ parameters:
   ai-client-secret: "30c733f4-1d27-4891-9633-c3125e0296a6$59d5zVVBHoXVGk_T-A5CAhelitpx5XkOYImEmubfp0w="
 
 modules:
-  - name: ifmerge-srv
+  - name: ifmerge-cap
     type: java
     path: .
     parameters:
