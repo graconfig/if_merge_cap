@@ -9,6 +9,7 @@ import com.handjapan.ifmerge.infrastructure.adapter.inbound.dto.AnalysisResultDt
 import com.handjapan.ifmerge.infrastructure.adapter.inbound.dto.AnalyzeRequestDto;
 import com.handjapan.ifmerge.infrastructure.adapter.inbound.dto.InterfaceRecordDto;
 import com.handjapan.ifmerge.infrastructure.adapter.inbound.dto.JobDto;
+import com.handjapan.ifmerge.infrastructure.config.IfmergeProperties;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -18,6 +19,12 @@ import java.util.List;
  */
 @Component
 public class AnalysisMapper {
+
+    private final IfmergeProperties props;
+
+    public AnalysisMapper(IfmergeProperties props) {
+        this.props = props;
+    }
 
     // ────────── REQUEST ──────────
 
@@ -31,12 +38,15 @@ public class AnalysisMapper {
                 ))
                 .toList();
 
+        // 既定値は ifmerge.analysis.* から（リクエストで明示された値が優先）。
+        int defP1 = props.analysis().phase1HeadRowsOrDefault();
+        int defChunk = props.analysis().maxChunkRowsOrDefault();
         AnalyzeDocumentCommand.Options options;
         if (req.options() == null) {
-            options = AnalyzeDocumentCommand.Options.defaults();
+            options = new AnalyzeDocumentCommand.Options(defP1, defChunk);
         } else {
-            int p1 = req.options().phase1HeadRows() == null ? 30 : req.options().phase1HeadRows();
-            int chunk = req.options().maxChunkRows() == null ? 100 : req.options().maxChunkRows();
+            int p1 = req.options().phase1HeadRows() == null ? defP1 : req.options().phase1HeadRows();
+            int chunk = req.options().maxChunkRows() == null ? defChunk : req.options().maxChunkRows();
             options = new AnalyzeDocumentCommand.Options(p1, chunk);
         }
 

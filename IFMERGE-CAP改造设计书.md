@@ -1,8 +1,11 @@
 # IFMERGE-CAP 改造设计书
 
-> 版本：v1.0
+> 版本：v1.1（实态校正）
 > 工程路径：`/data/HuangCX/ifmerge-cap/`
-> 编写日期：2026-06-02
+> 编写日期：2026-06-02（v1.0）／ 2026-06-15（v1.1 按代码实态校正）
+>
+> **v1.1 变更**：删除从未落地的「Mock 模式开关」与「token 统计 statistics 返回」描述；
+> 修正 `MergeGroup` 数据结构、相似度矩阵嵌套、文件数、测试清单、`[TOKEN]` 日志格式等与代码不符之处。
 
 ---
 
@@ -35,7 +38,7 @@
 | 6 | 并发模型 | 单实例 + Spring `@Async` |
 | 7 | 业务 Service 数 | 2 个（Analysis + Merge） |
 | 8 | 工程间串联 | Merge 接收 records[] 直接处理（无状态） |
-| 9 | LLM 接入 | SAP AI Core（production）/ Mock（开发）通过开关切换 |
+| 9 | LLM 接入 | SAP AI Core（env 方式：凭证明文 + 环境变量覆盖）。**无 Mock 开关**，本地运行亦需真实凭证 |
 | 10 | 鉴权 | XSUAA OAuth2 client_credentials |
 | 11 | HTTP 入口 | Spring REST Controller（`/api/v1/...`） |
 | 12 | 提示词管理 | `prompts.yaml` 外部化模板 |
@@ -114,7 +117,8 @@ ifmerge-cap/
             └── cds/               (analysis-service.cds + merge-service.cds)
 ```
 
-总计：57 个 Java 文件、5 个 pom.xml、3 个 CDS、3 个 yaml/xml。
+总计：约 66 个 Java 文件（main 61 + test 5）、5 个 pom.xml、3 个 CDS、3 个 yaml/xml。
+（注：CAP 占位 `AnalysisServiceHandler` / `MergeServiceHandler` 桩已删除；`db/` 模块与 `cds/*.cds` 作为未来 CAP 集成脚手架保留。）
 
 ---
 
@@ -151,8 +155,10 @@ namespace handjapan.ifmerge;
 | `IFInfo` | `ifName, docNumber, fieldPairs, representativeItem` |
 | `SimilarityPair` | `if1Name, if2Name, similarity` |
 | `SimilarityMode` | enum `{ MAX, AVG }` |
-| `MergeGroup` | `groupingId, module, scenario, memberIfNames, mergedIfName, groupingReason, mergedFields` |
-| `MergeResult` | `summary, groups, similarityMatrices` |
+| `MergeGroup` | `groupingId, module, scenario, members(List<MergeMember>), mergedIfName, mergedFields`；派生方法 `memberIfNames()` / `isMergeRequired()` / `mergedFieldCount()` |
+| `MergeMember` | `ifName, docNumber, itemCount, ifSummary, representativeItems, groupingReason`（IF 单位的元信息，`groupingReason` 在此而非 `MergeGroup`） |
+| `MergeResult` | `summary, groups, similarityMatrices(List<ModuleSimilarityMatrix>)` |
+| `MergeResult.ModuleSimilarityMatrix` | `module, scenarios(List<ScenarioMatrix>)`（按模块包裹场景矩阵） |
 | `MergeResult.ScenarioMatrix` | `scenario, axis, maxSimilarity[][], directionalSimilarity[][]` |
 | `MergeResult.DirectionalValue` | `rowToCol, colToRow` |
 
@@ -354,9 +360,13 @@ spring.application.name: ifmerge-cap
 server.port: 8080
 
 ifmerge:
-  ai.mock: true                        # MockSapAiCoreClient 切换
+  ai:                                  # SAP AI Core 凭证（env 方式，无 Mock 开关）
+    auth-url: ...
+    client-id: ...
+    base-url: ...
+    model-name: claude-4.6-sonnet
   security.permitAll: true             # dev 模式跳过 JWT
-  analysis:
+  analysis:                            # 经 IfmergeProperties 绑定，支持环境变量覆盖
     phase1HeadRows: 30
     maxChunkRows: 100
     timeout: 5m
@@ -383,13 +393,15 @@ springdoc:
   api-docs.path: /v3/api-docs
 ```
 
-### 8.2 双模式切换矩阵
+### 8.2 安全模式切换矩阵
 
-| 场景 | `ai.mock` | `security.permitAll` |
-|---|---|---|
-| 本地开发 / CI | true | true |
-| BTP CF dev space | false | true |
-| BTP CF qa / production | false | false |
+> 注：**不存在 AI Mock 开关**。所有环境的 AI 调用都走真实 SAP AI Core，本地/CI 也需配置真实凭证（或在测试中用 `FakeSapAiCoreClient` 替换）。仅 `security.permitAll` 一个开关随环境切换。
+
+| 场景 | `security.permitAll` |
+|---|---|
+| 本地开发 / CI | true |
+| BTP CF dev space | true |
+| BTP CF qa / production | false |
 
 ### 8.3 `prompts.yaml`
 
@@ -487,22 +499,23 @@ springdoc:
 | 位置 | 日志内容 |
 |---|---|
 | `AnalysisController.analyze` | `POST /api/v1/analyze: fileName=..., sheets=N` |
-| `AnalyzeDocumentUseCase.runAsync` | `Job {id}: Phase1 開始`, `Phase1 完了`, `Phase2 chunk i/N` |
+| `AnalyzeDocumentUseCase.runAsync` | `Job {id}: Phase1 開始`, `Phase1 完了`（Phase2 仅更新 progress，**不逐 chunk 打日志**） |
 | `MergeInterfacesUseCase.runAsync` | `Job {id}: 集約後 N IFs`, `分類完了`, `合并完了 N groups` |
-| `SapAiCoreClient.analyzePhase1` | `Phase1 開始: fileName=, prompt length=` |
-| `JobCleanupScheduler.cleanup` | `evicted N expired jobs` |
+| `SapAiCoreClient.analyzePhase1` | `Phase1 開始: fileName=, sheets=, headRows=`（不含 prompt length） |
+| `JobCleanupScheduler.cleanup` | `JobCleanup: evicted N expired jobs (ttl=...)` |
 
-### 10.4 Token 统计
+### 10.4 Token 统计（当前实态）
 
-每次 LLM 调用记录：
-- `llmCalls`：调用次数
-- `llmTokensIn`：输入 token 总数（从 SAP AI Core 响应 `usage.inputTokens` 抽取）
-- `llmTokensOut`：输出 token 总数
-- `totalDurationMs`：累计耗时
+每次 LLM 调用时，`SapAiCoreClient` 从 SAP AI Core 响应的 `usage` 中解析输入/输出 token，并打一行日志：
 
-统计在 `SapAiCoreClient` 内部按 Job 维度累加，通过 `AnalysisResult.statistics` / `MergeResult.statistics` 返回客户端。
+```
+[TOKEN] phase=phase1 in=8450 out=2200
+```
 
-集中日志中也以 `[TOKEN] jobId=... call=phase1 in=8450 out=2200 ms=18000` 格式记录，便于离线分析。
+> **当前未实现**（设计预留，后续可补）：
+> - 不含 `jobId` 与耗时 `ms` 字段（`SapAiCoreClient` 为无状态 Gateway，拿不到 jobId，也无计时）；
+> - **未**按 Job 维度累加 `llmCalls` / `llmTokensIn` / `llmTokensOut` / `totalDurationMs`；
+> - `AnalysisResult` / `MergeResult` **没有 `statistics` 字段**，token 统计**不随结果返回客户端**，仅存在于 STDOUT 日志，需离线 grep `[TOKEN]` 聚合。
 
 ### 10.5 BTP 日志聚合
 
@@ -514,16 +527,18 @@ production 部署时通过 `application-logs` 服务绑定，自动收集 STDOUT
 
 ### 11.1 应用配置覆盖
 
+> 说明：`SECURITY_PERMITALL` / `JOB_TTL` 经 `@Value` 读取；`ANALYSIS_*` / `MERGE_*` / `JOB_MAXCONCURRENT` 经 `IfmergeProperties`（`@ConfigurationProperties`）绑定。两者均支持下列环境变量覆盖。
+
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `IFMERGE_AI_MOCK` | true | `false` 切到真 SAP AI Core |
 | `IFMERGE_SECURITY_PERMITALL` | true | `false` 启用 XSUAA JWT 校验 |
-| `IFMERGE_ANALYSIS_PHASE1HEADROWS` | 30 | Phase 1 每个 sheet 头部行数 |
-| `IFMERGE_ANALYSIS_MAXCHUNKROWS` | 100 | Phase 2 单 chunk 最大行数 |
+| `IFMERGE_ANALYSIS_PHASE1HEADROWS` | 30 | Phase 1 每个 sheet 头部行数（请求未指定时的默认） |
+| `IFMERGE_ANALYSIS_MAXCHUNKROWS` | 100 | Phase 2 单 chunk 最大行数（请求未指定时的默认） |
 | `IFMERGE_MERGE_DEFAULTTHRESHOLD` | 0.80 | 默认相似度阈值 |
 | `IFMERGE_MERGE_DEFAULTMODE` | max | 默认相似度模式 |
 | `IFMERGE_JOB_TTL` | 15m | Job 内存保留时间 |
-| `IFMERGE_JOB_MAXCONCURRENT` | 10 | 同时在跑 Job 上限 |
+| `IFMERGE_JOB_MAXCONCURRENT` | 10 | 同时在跑 Job 上限（jobExecutor 最大线程数） |
+| `IFMERGE_AI_*` | — | SAP AI Core 凭证/参数（如 `IFMERGE_AI_CLIENT_SECRET`） |
 | `SERVER_PORT` | 8080 | HTTP 端口 |
 | `LOGGING_LEVEL_COM_HANDJAPAN_IFMERGE` | INFO | 应用日志级别 |
 
@@ -547,18 +562,23 @@ production 部署时通过 `application-logs` 服务绑定，自动收集 STDOUT
 
 ### 12.1 单元测试
 
-| 测试文件 | 用例数 | 覆盖范围 |
-|---|---|---|
-| `SimilarityCalculatorTest` | 5 | max/avg 双模式、subset、disjoint、empty 边界 |
-| `UnionFindTest` | 4 | 初始独立组、union 合并、传递性、未知元素异常 |
-| `Phase1PromptBuilderTest` | 9 | `formatSheetHead` 各种边界 + 模板渲染 |
+| 测试文件 | 覆盖范围 |
+|---|---|
+| `SimilarityCalculatorTest` | max/avg 双模式、subset、disjoint、empty 边界 |
+| `UnionFindTest` | 初始独立组、union 合并、传递性、未知元素异常 |
+| `Phase1PromptBuilderTest` | `formatSheetHead` 各种边界 + 模板渲染 |
+| `Phase2PromptBuilderTest` | Phase2 提示词构建 + 列映射渲染 |
+
+（另有 `infrastructure` 测试支撑 `FakeSapAiCoreClient`，用于无凭证联调时替换真实 AI 网关。）
 
 执行：
 ```bash
 mvn -pl domain test
 ```
 
-### 12.2 端到端 curl 测试（Mock 模式）
+### 12.2 端到端 curl 测试
+
+> 注：无 Mock 模式，启动前需在 `application.yaml` / 环境变量配好真实 SAP AI Core 凭证（`ifmerge.ai.*`），否则 AI 调用会失败。
 
 ```bash
 # ① 启动

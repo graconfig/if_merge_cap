@@ -9,6 +9,7 @@ import com.handjapan.ifmerge.domain.merge.model.SimilarityMode;
 import com.handjapan.ifmerge.infrastructure.adapter.inbound.dto.InterfaceRecordDto;
 import com.handjapan.ifmerge.infrastructure.adapter.inbound.dto.MergeRequestDto;
 import com.handjapan.ifmerge.infrastructure.adapter.inbound.dto.MergeResultDto;
+import com.handjapan.ifmerge.infrastructure.config.IfmergeProperties;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -22,19 +23,29 @@ import java.util.stream.Collectors;
 @Component
 public class MergeMapper {
 
+    private final IfmergeProperties props;
+
+    public MergeMapper(IfmergeProperties props) {
+        this.props = props;
+    }
+
     // ────────── REQUEST ──────────
 
     public MergeInterfacesCommand toCommand(MergeRequestDto req) {
         List<InterfaceRecord> records = req.records() == null ? List.of()
                 : req.records().stream().map(this::toRecord).toList();
 
+        // 既定値は ifmerge.merge.* から（リクエストで明示された値が優先）。
+        double defThreshold = props.merge().thresholdOrDefault();
         MergeInterfacesCommand.Options options;
         if (req.options() == null) {
-            options = MergeInterfacesCommand.Options.defaults();
+            options = new MergeInterfacesCommand.Options(
+                    defThreshold, SimilarityMode.fromString(props.merge().modeOrDefault()));
         } else {
             BigDecimal th = req.options().threshold();
-            double threshold = th == null ? 0.80 : th.doubleValue();
-            SimilarityMode mode = SimilarityMode.fromString(req.options().mode());
+            double threshold = th == null ? defThreshold : th.doubleValue();
+            String modeStr = req.options().mode() == null ? props.merge().modeOrDefault() : req.options().mode();
+            SimilarityMode mode = SimilarityMode.fromString(modeStr);
             options = new MergeInterfacesCommand.Options(threshold, mode);
         }
 
