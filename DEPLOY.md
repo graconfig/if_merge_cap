@@ -9,7 +9,7 @@
 
 | 对象 | 名称 | 来源 |
 |---|---|---|
-| 应用 | `ifmerge-cap-srv`（manifest）/ `ifmerge-srv`（mta 模块） | mta.yaml / manifest.yml |
+| 应用 | `ifmerge-cap`（mta 模块名 = CF 应用名） | mta.yaml |
 | 可执行 jar | `infrastructure/target/ifmerge-cap-srv-exec.jar` | spring-boot repackage |
 | XSUAA 实例 | `ifmerge-xsuaa` | mta 资源（按 `xs-security.json`） |
 | Destination 服务实例 | `ifmerge-destination` | mta 资源（plan: lite） |
@@ -100,25 +100,12 @@ cf deploy mta_archives/ifmerge-cap_1.0.0.mtar -e ifmerge.mtaext
 
 ---
 
-## 5. （备选）cf push 路线
-
-不走 MTA 时：
-```bash
-mvn -B clean package -DskipTests
-cf create-service xsuaa application ifmerge-xsuaa -c xs-security.json
-cf create-service destination lite ifmerge-destination
-cf push                          # 读 manifest.yml
-```
-机密仍在 Destination，无需 `cf set-env` 注入凭证。
-
----
-
 ## 6. 部署后验证（dev space）
 
 ```bash
 # 6.1 应用起来了？
 cf apps
-cf logs ifmerge-cap-srv --recent | tail -50      # 看启动日志
+cf logs ifmerge-cap --recent | tail -50      # 看启动日志
 
 # 6.2 健康检查（无需鉴权）
 curl https://<APP_ROUTE>/actuator/health          # 期望 {"status":"UP"}
@@ -205,7 +192,7 @@ cf logs ifmerge-cap-srv --recent | grep '\[TOKEN\]'
 1. **prod JWT 解码未实测**：`SecurityConfig` 用 `.jwt(jwt -> {})` 空配置，依赖 SAP 安全库从 VCAP 的 xsuaa 绑定自动建 JwtDecoder。**首次上 dev space 重点验证 6.3**；若启动报 no JwtDecoder，需加显式 `spring.security.oauth2.resourceserver.jwt.issuer-uri` 或自定义 decoder。
 2. **SDK 依赖版本**：`sap-cloud-sdk.version` 为占位，部署前对齐（第 1.3 节）。
 3. **旧 secret 轮换**：历史上 AI Core 凭证曾明文进过 git，建议在 BTP 重新生成 service key 并更新 Destination。
-4. **buildpack**：默认 `java_buildpack`；若你的环境用 SAP 提供的 `sap_java_buildpack`，在 mta.yaml / manifest.yml 改之。
+4. **buildpack**：默认 `java_buildpack`；若你的环境用 SAP 提供的 `sap_java_buildpack`，在 mta.yaml 改之。
 5. **region/URL**：`xs-security.json` 的 `redirect-uris`、Destination 的 URL/region 需与你实际 landscape 一致。
 
 ---
