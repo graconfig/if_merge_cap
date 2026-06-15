@@ -17,11 +17,19 @@ import java.util.concurrent.ThreadPoolExecutor;
 @EnableScheduling
 public class AsyncConfig {
 
+    private final IfmergeProperties props;
+
+    public AsyncConfig(IfmergeProperties props) {
+        this.props = props;
+    }
+
     @Bean(name = "jobExecutor")
     public TaskExecutor jobExecutor() {
+        // 同時実行 Job 上限は ifmerge.job.maxConcurrent から。
+        int maxConcurrent = props.job().maxConcurrentOrDefault();
         ThreadPoolTaskExecutor exec = new ThreadPoolTaskExecutor();
-        exec.setCorePoolSize(5);
-        exec.setMaxPoolSize(10);
+        exec.setCorePoolSize(Math.min(5, maxConcurrent));
+        exec.setMaxPoolSize(maxConcurrent);
         exec.setQueueCapacity(20);
         exec.setThreadNamePrefix("job-");
         exec.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());

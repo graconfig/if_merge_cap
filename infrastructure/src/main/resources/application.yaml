@@ -47,7 +47,7 @@ resilience4j:
     instances:
       sap-ai-core:
         max-attempts: 3
-        wait-duration: 2s
+        wait-duration: 1s
         exponential-backoff-multiplier: 2
         # サーキットブレーカが OPEN の時は即失敗させ、無駄なリトライをしない
         ignore-exceptions:
